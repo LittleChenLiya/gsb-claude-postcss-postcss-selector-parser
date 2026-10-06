@@ -872,3 +872,46 @@ postcss(plugin()).process(`
 //   2 |   color: red;
 //   3 | }
 ```
+
+## Explicit class/id rename plans
+
+`createRenamePlan` validates a rename mapping up front, `applyRenamePlan`
+applies a validated plan to a parsed AST, and `renameSelectors` does both in
+one call. Only `class` and `id` selector nodes are renamed: attribute
+strings, tag names, namespace prefixes and pseudo-class plain-text arguments
+are never treated as class or id names, while nested selectors (e.g. inside
+`:is()`) are walked normally. Names are compared by their semantic
+(unescaped) value, so `.a` and its escaped spelling `.\61` rename together.
+`raws` entries that are not involved in a rename are preserved.
+
+```js
+const parser = require('postcss-selector-parser');
+
+const root = parser().astSync('.a[href=".a"] :is(.a)');
+parser.renameSelectors(root, { classes: { a: 'b' } });
+root.toString(); // '.b[href=".a"] :is(.b)'
+```
+
+### `parser.createRenamePlan([options])`
+
+Builds a validated plan from `{ classes, ids }` mappings (plain objects,
+`Map`s, or `[from, to]` pairs). If two different sources map to the same
+target (a many-to-one mapping), that is a potential conflict: every conflict
+is reported and a `parser.RenameConflictError` (with a `conflicts` array) is
+thrown before anything is written out.
+
+### `parser.applyRenamePlan(root, plan)`
+
+Applies a plan from `createRenamePlan` to a selector AST. Matching nodes are
+collected first and only then updated; returns the list of applied
+`{ type, from, to }` renames.
+
+### `parser.renameSelectors(root, [options])`
+
+Shortcut for `applyRenamePlan(root, createRenamePlan(options))`.
+
+A standalone command is also available:
+
+```sh
+postcss-rename-selectors --class a=b --id x=y ':is(.a) #x'
+```
