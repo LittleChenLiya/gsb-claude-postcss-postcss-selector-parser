@@ -84,3 +84,40 @@ specific need.
 ## License
 
 MIT
+
+## Specificity analysis (explicit, per-node)
+
+`specificity.mjs` (repository root) reports an explicit `(a, b, c)`
+specificity triple **plus the contribution of every AST node**, so each
+number is traceable to its source. It runs in plain Node — no browser.
+
+```sh
+node specificity.mjs [--parent "<parent selector>"] [--json] "<selector>" [...]
+```
+
+Rules:
+
+* `:where(...)` always contributes `(0, 0, 0)`; its arguments are ignored.
+* `:is(...)`, `:not(...)`, `:has(...)` adopt the specificity of their most
+  specific argument; every argument is analyzed and the chosen source is
+  recorded.
+* Unknown pseudo-classes are reported as **unsupported** — they are never
+  silently added to a column, and a selector containing them gets
+  `specificity: null` instead of a fabricated total.
+* A comma-separated selector list is reported **per complex selector**;
+  entries are never merged into a single score.
+* The `&` nesting selector is only resolved when a parent selector is
+  explicitly passed (`--parent` / `options.parent`); otherwise it is
+  reported as unsupported.
+
+Four-selector example:
+
+```sh
+node specificity.mjs ":where(#x).a" ":is(.a,#b)" "nav > .item:hover::after" "#a, .b[href] span"
+```
+
+yields `(0, 1, 0)` (only the class counts), `(1, 0, 0)` (the `#b` branch of
+`:is()`), `(0, 2, 2)`, and two separate list entries `(1, 0, 0)` and
+`(0, 2, 1)` — each with per-node contributions. Use `--json` for the full
+machine-readable report. Tests: `node --test specificity.test.mjs`
+(requires `npm run build` first, since the analyzer imports `./dist`).
