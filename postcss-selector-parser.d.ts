@@ -567,4 +567,39 @@ declare namespace parser {
     }
     function universal(opts?: NamespaceOptions): Universal;
     function isUniversal(node: any): node is Universal;
+
+    /** An explicit rename plan for class and id selector nodes. */
+    interface RenamePlan {
+        classes?: { [source: string]: string };
+        ids?: { [source: string]: string };
+    }
+    interface RenameMatch {
+        node: Node;
+        kind: "class" | "id";
+        next: string;
+    }
+    interface PlannedRenames {
+        classes: { [source: string]: string };
+        ids: { [source: string]: string };
+        matches: RenameMatch[];
+    }
+    interface RenameResult {
+        classes: number;
+        ids: number;
+    }
+    class RenameConflictError extends Error {
+        conflicts: Array<{ kind: string; target: string; sources: string[] }>;
+    }
+    /**
+     * Validates a rename plan and collects the class/id nodes it would
+     * rename, without mutating the tree. Throws RenameConflictError when two
+     * distinct sources of the same kind map to the same target.
+     */
+    function planRenames(root: Container, plan: RenamePlan): PlannedRenames;
+    /**
+     * Validates the whole plan first and only then renames the matching
+     * class/id selector nodes. Attribute strings, pseudo arguments, tag
+     * names and namespace prefixes never participate.
+     */
+    function applyRenamePlan(root: Container, plan: RenamePlan): RenameResult;
 }

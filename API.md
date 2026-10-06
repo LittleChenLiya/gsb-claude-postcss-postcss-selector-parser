@@ -872,3 +872,42 @@ postcss(plugin()).process(`
 //   2 |   color: red;
 //   3 | }
 ```
+
+## Renaming classes and ids
+
+### `parser.applyRenamePlan(root, plan)`
+
+Applies an explicit rename plan to the class and id nodes of a parsed
+selector tree and returns the number of renamed nodes per kind,
+`{classes: n, ids: m}`.
+
+```js
+const parser = require('postcss-selector-parser');
+const root = parser().astSync('.a[href=".a"], :is(.\61), #x');
+parser.applyRenamePlan(root, {
+  classes: { a: 'b' },
+  ids: { x: 'y' },
+});
+root.toString(); // '.b[href=".a"], :is(.b), #y'
+```
+
+Only class and id selector nodes participate:
+
+* Attribute strings such as `[href=".a"]` and plain-text pseudo arguments
+  are never treated as class names.
+* Tag names and namespace prefixes are never renamed.
+* Targets nested inside pseudo selectors (e.g. `:is(.a)`) are recognized.
+* Matching compares semantic (unescaped) values, so `.a` and `.\61` are
+  renamed together; escaped plan keys such as `"\61"` work the same way.
+
+The plan is validated as a whole before anything is written. If two
+distinct sources of the same kind map to the same target (a many-to-one
+mapping that would merge selectors), a `parser.RenameConflictError` is
+thrown and the tree is left untouched. `raws` of nodes that are not
+renamed are preserved.
+
+### `parser.planRenames(root, plan)`
+
+Validates the plan and returns the normalized semantic mappings plus the
+list of matching nodes (`{classes, ids, matches}`) without mutating the
+tree. Throws the same errors as `applyRenamePlan`.
