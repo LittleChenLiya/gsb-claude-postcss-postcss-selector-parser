@@ -31,6 +31,37 @@ const WHITESPACE_EQUIV_TOKENS = {
   [tokens.comment]: true,
 };
 
+// Functional pseudo-classes whose arguments are selector lists (or
+// selector-like, e.g. `:nth-child(… of …)`). In conservative mode these
+// keep producing an editable child AST; anything else keeps its raw text.
+const KNOWN_SELECTOR_PSEUDOS = new Set([
+  "is",
+  "where",
+  "not",
+  "has",
+  "matches",
+  "any",
+  "nth-child",
+  "nth-last-child",
+  "nth-of-type",
+  "nth-last-of-type",
+  "nth-col",
+  "nth-last-col",
+  "host",
+  "host-context",
+  "slotted",
+  "global",
+  "local",
+]);
+
+function isKnownSelectorPseudo(value) {
+  let name = String(value)
+    .replace(/^:+/, "")
+    .toLowerCase()
+    .replace(/^-(?:webkit|moz|ms|o)-/, "");
+  return KNOWN_SELECTOR_PSEUDOS.has(name);
+}
+
 function tokenStart(token) {
   return {
     line: token[TOKEN.START_LINE],
@@ -114,7 +145,10 @@ function uniqs() {
 export default class Parser {
   constructor(rule, options = {}) {
     this.rule = rule;
-    this.options = Object.assign({ lossy: false, safe: false }, options);
+    this.options = Object.assign(
+      { lossy: false, safe: false, preserveUnknownPseudoParams: false },
+      options,
+    );
     this.position = 0;
     this.nestingDepth = 0;
     this.maxNestingDepth = resolveMaxNestingDepth(this.options.maxNestingDepth);
@@ -753,25 +787,13 @@ export default class Parser {
     const openingToken = this.currToken;
     this.position++;
     if (last && last.type === types.PSEUDO) {
-      const selector = new Selector({
-        source: { start: tokenStart(this.tokens[this.position]) },
-        sourceIndex: this.tokens[this.position][TOKEN.START_POS],
-      });
-      const cache = this.current;
-      last.append(selector);
-      this.current = selector;
-      // Track nesting depth so deeply nested pseudo selectors raise a
-      // catchable error instead of overflowing the call stack. The
-      // counter is restored in `finally` so the parser is never left in
-      // an inconsistent state, even on the error path.
-      this.nestingDepth++;
-      try {
-        if (this.nestingDepth > this.maxNestingDepth) {
-          this.error(
-            `Cannot parse selector: nesting depth exceeds the maximum of ${this.maxNestingDepth}.`,
-            { index: this.currToken[TOKEN.START_POS] },
-          );
-        }
+      if (this.options.preserveUnknownPseudoParams && !isKnownSelectorPseudo(last.value)) {
+        // Conservative mode: keep the raw argument text of unknown
+        // functional pseudo-classes instead of parsing it into a selector
+        // AST. Strings and comments are single tokens, so commas, escapes
+        // or parentheses inside them cannot unbalance this scan, and the
+        // sliced source text preserves comments and escapes verbatim.
+        let closingToken;
         while (this.position < this.tokens.length && unbalanced) {
           if (this.currToken[TOKEN.TYPE] === tokens.openParenthesis) {
             unbalanced++;
@@ -780,17 +802,60 @@ export default class Parser {
             unbalanced--;
           }
           if (unbalanced) {
-            this.parse();
+            this.position++;
           } else {
-            this.current.source.end = tokenEnd(this.currToken);
-            this.current.parent.source.end = tokenEnd(this.currToken);
+            closingToken = this.currToken;
             this.position++;
           }
         }
-      } finally {
-        this.nestingDepth--;
+        if (closingToken) {
+          ensureObject(last, "raws");
+          last.raws.params = this.css.slice(
+            openingToken[TOKEN.END_POS],
+            closingToken[TOKEN.START_POS],
+          );
+          last.source.end = tokenEnd(closingToken);
+        }
+      } else {
+        const selector = new Selector({
+          source: { start: tokenStart(this.tokens[this.position]) },
+          sourceIndex: this.tokens[this.position][TOKEN.START_POS],
+        });
+        const cache = this.current;
+        last.append(selector);
+        this.current = selector;
+        // Track nesting depth so deeply nested pseudo selectors raise a
+        // catchable error instead of overflowing the call stack. The
+        // counter is restored in `finally` so the parser is never left in
+        // an inconsistent state, even on the error path.
+        this.nestingDepth++;
+        try {
+          if (this.nestingDepth > this.maxNestingDepth) {
+            this.error(
+              `Cannot parse selector: nesting depth exceeds the maximum of ${this.maxNestingDepth}.`,
+              { index: this.currToken[TOKEN.START_POS] },
+            );
+          }
+          while (this.position < this.tokens.length && unbalanced) {
+            if (this.currToken[TOKEN.TYPE] === tokens.openParenthesis) {
+              unbalanced++;
+            }
+            if (this.currToken[TOKEN.TYPE] === tokens.closeParenthesis) {
+              unbalanced--;
+            }
+            if (unbalanced) {
+              this.parse();
+            } else {
+              this.current.source.end = tokenEnd(this.currToken);
+              this.current.parent.source.end = tokenEnd(this.currToken);
+              this.position++;
+            }
+          }
+        } finally {
+          this.nestingDepth--;
+        }
+        this.current = cache;
       }
-      this.current = cache;
     } else {
       // I think this case should be an error. It's used to implement a basic parse of media queries
       // but I don't think it's a good idea.

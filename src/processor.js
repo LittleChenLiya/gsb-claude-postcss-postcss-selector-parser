@@ -35,6 +35,7 @@ export default class Processor {
     return {
       lossy: this._isLossy(merged),
       maxNestingDepth: merged.maxNestingDepth,
+      preserveUnknownPseudoParams: merged.preserveUnknownPseudoParams,
     };
   }
 

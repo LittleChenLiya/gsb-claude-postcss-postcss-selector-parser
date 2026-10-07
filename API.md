@@ -716,6 +716,13 @@ Example: `[ /*before*/ href /* after-attr */ = /* after-operator */ te/*inside-v
 * `updateSelector` - When `true`, if any processor methods are passed a postcss
   `Rule` node instead of a string, then that Rule's selector is updated
   with the results of the processing. Defaults to `true`.
+* `preserveUnknownPseudoParams` - When `true`, the arguments of functional
+  pseudo-classes that are not known selector-level pseudos (such as `:is()`,
+  `:where()`, `:not()`, `:has()` or `:nth-child()`) are kept verbatim as raw
+  text on `pseudo.raws.params` instead of being parsed into an editable
+  selector AST. Known selector pseudos still produce child nodes. Comments,
+  escapes and commas inside strings of the raw arguments are preserved
+  exactly. Defaults to `false`.
 
 ### `process|processSync(selectors, [options])`
 

@@ -100,6 +100,16 @@ declare namespace parser {
          * instead of overflowing the call stack. Default: 256.
          */
         maxNestingDepth: number;
+        /**
+         * When true, the arguments of functional pseudo-classes that are not
+         * known selector-level pseudos (such as `:is()`, `:where()`, `:not()`,
+         * `:has()` or `:nth-child()`) are preserved verbatim as raw text on
+         * `pseudo.raws.params` instead of being parsed into an editable
+         * selector AST. Known selector pseudos still produce child nodes, and
+         * comments, escapes and commas inside strings of the raw arguments
+         * are preserved exactly. Default: false.
+         */
+        preserveUnknownPseudoParams: boolean;
     }
     interface StringifyOptions {
         /**
