@@ -100,6 +100,16 @@ declare namespace parser {
          * instead of overflowing the call stack. Default: 256.
          */
         maxNestingDepth: number;
+        /**
+         * When true, the parenthesized arguments of unknown pseudo-classes
+         * are preserved verbatim as raw text (exposed as a single `string`
+         * child node) instead of being parsed into a selector AST. Comments,
+         * escapes and commas (inside or outside of strings) are kept exactly
+         * and are never treated as selector groups. Known selector
+         * pseudo-classes such as :is(), :not(), :has() and :where() still
+         * get a parsed, editable child AST. Default: false.
+         */
+        preserveUnknownPseudoArgs: boolean;
     }
     interface StringifyOptions {
         /**

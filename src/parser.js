@@ -31,6 +31,34 @@ const WHITESPACE_EQUIV_TOKENS = {
   [tokens.comment]: true,
 };
 
+/**
+ * Pseudo-classes (and pseudo-elements) whose parenthesized argument is a
+ * selector or selector list. These always get a parsed, editable child AST,
+ * even when `preserveUnknownPseudoArgs` is enabled.
+ */
+const KNOWN_SELECTOR_PSEUDOS = new Set([
+  "is",
+  "not",
+  "has",
+  "where",
+  "matches",
+  "-webkit-any",
+  "-moz-any",
+  "nth-child",
+  "nth-last-child",
+  "nth-of-type",
+  "nth-last-of-type",
+  "host",
+  "host-context",
+  "slotted",
+]);
+
+function isKnownSelectorPseudo(pseudoValue) {
+  // pseudoValue includes the leading colon(s), e.g. ":is" or "::slotted".
+  const name = pseudoValue.replace(/^:+/, "").toLowerCase();
+  return KNOWN_SELECTOR_PSEUDOS.has(name);
+}
+
 function tokenStart(token) {
   return {
     line: token[TOKEN.START_LINE],
@@ -114,7 +142,10 @@ function uniqs() {
 export default class Parser {
   constructor(rule, options = {}) {
     this.rule = rule;
-    this.options = Object.assign({ lossy: false, safe: false }, options);
+    this.options = Object.assign(
+      { lossy: false, safe: false, preserveUnknownPseudoArgs: false },
+      options,
+    );
     this.position = 0;
     this.nestingDepth = 0;
     this.maxNestingDepth = resolveMaxNestingDepth(this.options.maxNestingDepth);
@@ -753,6 +784,9 @@ export default class Parser {
     const openingToken = this.currToken;
     this.position++;
     if (last && last.type === types.PSEUDO) {
+      if (this.options.preserveUnknownPseudoArgs && !isKnownSelectorPseudo(last.value)) {
+        return this.rawPseudoArgument(last, openingToken);
+      }
       const selector = new Selector({
         source: { start: tokenStart(this.tokens[this.position]) },
         sourceIndex: this.tokens[this.position][TOKEN.START_POS],
@@ -833,6 +867,63 @@ export default class Parser {
         (this.currToken || openingToken)[TOKEN.START_POS],
       );
     }
+  }
+
+  /**
+   * Conservative argument handling for unknown pseudo-classes: the tokens
+   * between the parentheses are kept verbatim as a single string node
+   * instead of being parsed into a selector AST. Comments, escapes and
+   * commas (inside or outside of strings) are preserved exactly and are
+   * never treated as selector groups.
+   */
+  rawPseudoArgument(pseudo, openingToken) {
+    let unbalanced = 1;
+    let raw = "";
+    let firstToken = this.currToken;
+    let lastToken = openingToken;
+    while (this.position < this.tokens.length && unbalanced) {
+      if (this.currToken[TOKEN.TYPE] === tokens.openParenthesis) {
+        unbalanced++;
+      }
+      if (this.currToken[TOKEN.TYPE] === tokens.closeParenthesis) {
+        unbalanced--;
+      }
+      if (unbalanced) {
+        raw += this.content();
+        lastToken = this.currToken;
+        this.position++;
+      }
+    }
+    if (unbalanced) {
+      // Ran out of tokens before the parenthesis was closed; point at the
+      // opening parenthesis, which is where the author needs to look.
+      return this.expected("closing parenthesis", openingToken[TOKEN.START_POS]);
+    }
+    const closingToken = this.currToken;
+    let source;
+    let sourceIndex;
+    if (lastToken === openingToken) {
+      // Empty argument: `:unknown()`.
+      source = getSource(
+        openingToken[TOKEN.END_LINE],
+        openingToken[TOKEN.END_COL],
+        openingToken[TOKEN.END_LINE],
+        openingToken[TOKEN.END_COL],
+      );
+      sourceIndex = openingToken[TOKEN.END_POS];
+    } else {
+      source = getTokenSourceSpan(firstToken, lastToken);
+      sourceIndex = firstToken[TOKEN.START_POS];
+    }
+    pseudo.append(
+      new Str({
+        value: raw,
+        source,
+        sourceIndex,
+      }),
+    );
+    pseudo.source.end = tokenEnd(closingToken);
+    this.position++;
   }
 
   pseudo() {
