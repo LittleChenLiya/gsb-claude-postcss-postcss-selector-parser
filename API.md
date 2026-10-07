@@ -270,6 +270,29 @@ Arguments:
 ...
 * `nodeN`: The node to substitute the original with.
 
+### `node.moveWithComments(target)`
+
+Moves the node, together with any comment nodes directly adjacent to it in
+its current parent, to the end of the target container. The relative order
+of the node and its neighbouring comments is kept, raw whitespace and
+comment tokens are preserved, and every moved node's `parent` pointer is
+updated, so moving a node across selectors leaves no stale references
+behind. If the target is not a container, or is the node itself or one of
+its descendants, neither tree is modified.
+
+```js
+// selectors: "h1/*one*/.a/*two*/,h2"
+const first = selectors.at(0);
+const second = selectors.at(1);
+first.at(2).moveWithComments(second);
+console.log(String(selectors));
+// => h1,h2/*one*/.a/*two*/
+```
+
+Arguments:
+
+* `target`: The container to move the node (and its adjacent comments) into.
+
 ### `node.remove()`
 
 Removes the node from its parent node.

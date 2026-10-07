@@ -1,4 +1,5 @@
 import { ensureObject, MAX_NESTING_DEPTH } from "../util";
+import { isComment, isContainer } from "./guards";
 
 let cloneNode = function (obj, parent, depth = 0) {
   // Bound recursion so a pathologically deep node tree raises a catchable
@@ -57,6 +58,59 @@ export default class Node {
         this.parent.insertBefore(this, arguments[index]);
       }
       this.remove();
+    }
+    return this;
+  }
+
+  /**
+   * Moves this node, together with any comment nodes directly adjacent to
+   * it in its current parent, to the end of the target container.
+   *
+   * The relative order of the node and its neighbouring comments is kept,
+   * and because the nodes themselves are relocated (not cloned) their raw
+   * whitespace and comment tokens are preserved. Every moved node's
+   * `parent` pointer is updated, so moving a node across selectors leaves
+   * no stale parent references behind.
+   *
+   * If the target is not a container, or is this node or one of its
+   * descendants, neither tree is modified.
+   *
+   * @param {Container} target the container to move the node into
+   * @returns {Node} this node, for chaining
+   */
+  moveWithComments(target) {
+    // Validate the target before touching either tree, so that an invalid
+    // target leaves both trees untouched.
+    if (!target || !isContainer(target)) {
+      return this;
+    }
+    for (let ancestor = target; ancestor; ancestor = ancestor.parent) {
+      if (ancestor === this) {
+        // Moving a node into itself or one of its descendants would
+        // create a cycle.
+        return this;
+      }
+    }
+
+    let group = [this];
+    let source = this.parent;
+    if (source) {
+      let index = source.index(this);
+      let before = [];
+      for (let i = index - 1; i >= 0 && isComment(source.at(i)); i--) {
+        before.unshift(source.at(i));
+      }
+      let after = [];
+      for (let i = index + 1; i < source.length && isComment(source.at(i)); i++) {
+        after.push(source.at(i));
+      }
+      group = before.concat([this], after);
+      for (let node of group) {
+        source.removeChild(node);
+      }
+    }
+    for (let node of group) {
+      target.append(node);
     }
     return this;
   }

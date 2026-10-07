@@ -178,6 +178,13 @@ declare namespace parser {
         rawSpaceAfter: string;
         remove(): Node;
         replaceWith(...nodes: Node[]): Node;
+        /**
+         * Moves this node, together with any comment nodes directly adjacent
+         * to it in its current parent, to the end of the target container.
+         * If the target is not a container, or is this node or one of its
+         * descendants, neither tree is modified.
+         */
+        moveWithComments(target: Container): Node;
         next(): Node | undefined;
         prev(): Node | undefined;
         clone(opts?: {[override: string]:any}): this;
